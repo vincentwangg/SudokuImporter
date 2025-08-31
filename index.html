@@ -43,9 +43,8 @@
 </head>
 <body>
   <div class="toolbar">
-    <label class="btn file">Upload image
-      <input id="fileInput" type="file" accept="image/*" />
-    </label>
+    <label class="btn file" for="fileInput">Upload image</label>
+    <input id="fileInput" type="file" accept="image/*" hidden />
 
     <div class="row">
       <button id="confirmBtn" class="btn">Confirm Grid</button>
@@ -110,6 +109,24 @@
     const saveBtn = document.getElementById('saveBtn');
 
     // --------------- Helpers ---------------
+    let _picking = false;
+    function openFilePicker() {
+      if (_picking) return;
+      _picking = true;
+
+      // When the dialog closes (picked or canceled), window regains focus.
+      const reset = () => {
+        _picking = false;
+        window.removeEventListener('focus', reset);
+        fileInput.removeEventListener('change', reset);
+      };
+
+      window.addEventListener('focus', reset, { once: true });
+      fileInput.addEventListener('change', reset, { once: true });
+
+      fileInput.click();
+    }
+
     const setStatus = (msg) => statusEl.textContent = msg;
 
     function resizeCanvasToDisplaySize() {
@@ -652,8 +669,6 @@
     });
 
     window.addEventListener('keydown', (e) => {
-      // quick open
-      if ((e.key === 'u' || e.key === 'U') && !e.metaKey && !e.ctrlKey && !e.altKey) { fileInput.click(); return; }
       if (state.mode !== 'solve') return;
 
       // ---- HINT MODIFIERS ----
