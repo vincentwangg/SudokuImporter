@@ -509,6 +509,33 @@
       redraw();
     }
 
+    function clearBox(br, bc) {
+      const r0 = br * 3, c0 = bc * 3;
+      for (let r = r0; r < r0 + 3; r++) {
+        for (let c = c0; c < c0 + 3; c++) {
+          state.board.values[r][c] = 0;
+          state.board.hints.center[r][c].clear();
+          state.board.hints.top[r][c].clear();
+          state.board.hints.bottom[r][c].clear();
+        }
+      }
+    }
+
+    function clearBoxesForSelection() {
+      if (!anySelected()) return;
+      const seen = new Set(); // avoid clearing the same box twice
+      for (const k of state.board.selection) {
+        const [r, c] = k.split(',').map(Number);
+        const br = Math.floor(r / 3), bc = Math.floor(c / 3);
+        const id = `${br},${bc}`;
+        if (!seen.has(id)) {
+          clearBox(br, bc);
+          seen.add(id);
+        }
+      }
+      redraw();
+    }
+
     // --------------- Drag & Drop ------------
     const showHint = (b) => dropHint.classList.toggle('show', !!b);
     ['dragenter','dragover'].forEach(t => window.addEventListener(t, (e)=>{ e.preventDefault(); e.dataTransfer&&(e.dataTransfer.dropEffect='copy'); showHint(true); }));
@@ -547,12 +574,12 @@
         return;
       }
 
-      // Clear hints in a region with the same modifier + 0 / Backspace / Delete
-      const isZero = e.code === 'Digit0' || e.key === '0' || e.key === 'Backspace' || e.key === 'Delete';
-      if (isZero) {
-        if (state.mod.zDown) { e.preventDefault(); clearHints('bottom'); redraw(); return; }
-        if (e.shiftKey)       { e.preventDefault(); clearHints('top');    redraw(); return; }
-        if (e.ctrlKey || e.metaKey) { e.preventDefault(); clearHints('center'); redraw(); return; }
+      // Box wipe: Backspace/Delete with NO modifiers
+      if ((e.key === 'Backspace' || e.key === 'Delete')
+          && !e.shiftKey && !e.ctrlKey && !e.metaKey && !state.mod.zDown) {
+        e.preventDefault();
+        clearBoxesForSelection();
+        return;
       }
 
       // digits
