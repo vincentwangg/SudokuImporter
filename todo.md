@@ -1,2 +1,3 @@
 - add save function (need to fix. currently it saves image and board, but doesn't load grid automatically and also drops the last action performed)
 - change shift select to be like cmd select
+- be able to unselect a box after paint selecting a bunch of boxes

@@ -58,6 +58,7 @@
         <button class="btn" data-n="9">9</button>
         <button class="btn" data-n="0" title="Clear cell">⌫</button>
       </div>
+      <button id="saveBtn" class="btn" title="Save canvas as PNG (⌘/Ctrl+S)">Save Result as Image</button>
     </div>
 
     <span class="status" id="status">Drop an image anywhere or use Upload.</span>
@@ -104,6 +105,7 @@
     const confirmBtn = document.getElementById('confirmBtn');
     const gridTip = document.getElementById('gridTip');
     const keypad = document.getElementById('keypad');
+    const saveBtn = document.getElementById('saveBtn');
 
     // --------------- Helpers ---------------
     const setStatus = (msg) => statusEl.textContent = msg;
@@ -777,6 +779,56 @@
     function deserializeHints(h) {
       return h.map(row => row.map(arr => new Set(arr || []))); // array -> Set
     }
+
+    function canvasToBlob() {
+      return new Promise((resolve) => {
+        resizeCanvasToDisplaySize();
+        redraw();
+        canvas.toBlob((blob) => resolve(blob), 'image/png');
+      });
+    }
+
+    async function saveCanvasAs() {
+      if (!state.img) { setStatus('Nothing to save yet.'); return; }
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const suggestedName = `sudoku-overlay-${ts}.png`;
+      const blob = await canvasToBlob();
+      if (!blob) return;
+
+      // Preferred: File System Access API (Chrome/Edge, some Opera/Android)
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName,
+            types: [{
+              description: 'PNG Image',
+              accept: { 'image/png': ['.png'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          setStatus('Saved. (Picked name & location.)');
+          return;
+        } catch (err) {
+          if (err && err.name === 'AbortError') { setStatus('Save canceled.'); return; }
+          console.error(err);
+          // fall through to legacy download
+        }
+      }
+
+      // Fallback: regular download (browser may auto-save to Downloads)
+      const a = document.createElement('a');
+      a.download = suggestedName;            // suggested file name
+      a.href = URL.createObjectURL(blob);
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(a.href);
+      a.remove();
+      setStatus('Downloaded. (File name/location depend on browser settings.)');
+    }
+
+    saveBtn.addEventListener('click', saveCanvasAs);
 
     // --------------- Resize -----------------
     const ro = new ResizeObserver(() => redraw());
