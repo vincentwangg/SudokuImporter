@@ -138,6 +138,7 @@
 
     function commitHint(pos, d) { // pos: 'center' | 'top' | 'bottom'
       if (state.mode !== 'solve' || !anySelected()) return;
+      pushHistory();
       const grid = state.board.hints[pos];
       for (const k of state.board.selection) {
         const [r, c] = k.split(',').map(Number);
@@ -149,6 +150,7 @@
     }
 
     function clearHints(pos) {
+      pushHistory();
       const grid = state.board.hints[pos];
       for (const k of state.board.selection) {
         const [r,c] = k.split(',').map(Number);
@@ -497,6 +499,7 @@
     // digit entry applies to all selected cells
     function commitDigit(d) {
       if (state.mode !== 'solve' || !anySelected()) return;
+      pushHistory();
       for (const k of state.board.selection) {
         const [r,c] = k.split(',').map(Number);
         state.board.values[r][c] = d; // 0 clears
@@ -521,19 +524,62 @@
       }
     }
 
-    function clearBoxesForSelection() {
+    function clearSelectedCellsAll() {
       if (!anySelected()) return;
-      const seen = new Set(); // avoid clearing the same box twice
+      pushHistory();
       for (const k of state.board.selection) {
         const [r, c] = k.split(',').map(Number);
-        const br = Math.floor(r / 3), bc = Math.floor(c / 3);
-        const id = `${br},${bc}`;
-        if (!seen.has(id)) {
-          clearBox(br, bc);
-          seen.add(id);
-        }
+        state.board.values[r][c] = 0;
+        state.board.hints.center[r][c].clear();
+        state.board.hints.top[r][c].clear();
+        state.board.hints.bottom[r][c].clear();
       }
       redraw();
+    }
+
+    // ---- Undo/Redo ----
+    const history = { past: [], future: [], limit: 200 };
+
+    function cloneValues(vals) {
+      return vals.map(row => row.slice());
+    }
+    function cloneHintsGrid(grid) {
+      return grid.map(row => row.map(set => new Set(set))); // deep copy Sets
+    }
+    function snapshotBoard() {
+      return {
+        values: cloneValues(state.board.values),
+        hints: {
+          center: cloneHintsGrid(state.board.hints.center),
+          top:    cloneHintsGrid(state.board.hints.top),
+          bottom: cloneHintsGrid(state.board.hints.bottom),
+        }
+      };
+    }
+    function restoreBoard(snap) {
+      state.board.values = cloneValues(snap.values);
+      state.board.hints.center = cloneHintsGrid(snap.hints.center);
+      state.board.hints.top    = cloneHintsGrid(snap.hints.top);
+      state.board.hints.bottom = cloneHintsGrid(snap.hints.bottom);
+      redraw();
+    }
+    function pushHistory() {
+      history.past.push(snapshotBoard());
+      if (history.past.length > history.limit) history.past.shift();
+      history.future.length = 0; // new branch
+    }
+    function undo() {
+      if (!history.past.length) return;
+      const now = snapshotBoard();
+      history.future.push(now);
+      const prev = history.past.pop();
+      restoreBoard(prev);
+    }
+    function redo() {
+      if (!history.future.length) return;
+      history.past.push(snapshotBoard());
+      const next = history.future.pop();
+      restoreBoard(next);
     }
 
     // --------------- Drag & Drop ------------
@@ -545,6 +591,14 @@
     fileInput.addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; handleFile(f); e.target.value=''; });
 
     // --------------- Keyboard ---------------
+    state.mod = { zDown: false };
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'q' || e.key === 'Q') state.mod.zDown = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'q' || e.key === 'Q') state.mod.zDown = false;
+    });
+
     window.addEventListener('keydown', (e) => {
       // quick open
       if ((e.key === 'u' || e.key === 'U') && !e.metaKey && !e.ctrlKey && !e.altKey) { fileInput.click(); return; }
@@ -574,11 +628,23 @@
         return;
       }
 
-      // Box wipe: Backspace/Delete with NO modifiers
+      // Clear ONLY the selected cells (value + all hints)
       if ((e.key === 'Backspace' || e.key === 'Delete')
           && !e.shiftKey && !e.ctrlKey && !e.metaKey && !state.mod.zDown) {
         e.preventDefault();
-        clearBoxesForSelection();
+        clearSelectedCellsAll();
+        return;
+      }
+
+      // Undo / Redo
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && (e.key === 'z' || e.key === 'Z')))) {
+        e.preventDefault();
+        redo();
         return;
       }
 
@@ -609,15 +675,6 @@
       }
       redraw();
     });
-
-    state.mod = { zDown: false };
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'z' || e.key === 'Z') state.mod.zDown = true;
-    });
-    window.addEventListener('keyup', (e) => {
-      if (e.key === 'z' || e.key === 'Z') state.mod.zDown = false;
-    });
-
 
     // --------------- Resize -----------------
     const ro = new ResizeObserver(() => redraw());
