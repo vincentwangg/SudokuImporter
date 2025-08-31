@@ -110,9 +110,9 @@
     function setStatus(msg) { statusEl.textContent = msg; }
 
     function fitImageRect(imgW, imgH, viewW, viewH) {
-      // Cap image size for readability
-      const maxW = viewW * 0.9;
-      const maxH = viewH * 0.7;
+      // Cap image size for readability (60% of viewport)
+      const maxW = viewW * 0.6;
+      const maxH = viewH * 0.6;
       const scale = Math.min(maxW / imgW, maxH / imgH);
       const w = Math.max(1, Math.floor(imgW * scale));
       const h = Math.max(1, Math.floor(imgH * scale));
