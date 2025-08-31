@@ -202,6 +202,7 @@
           state.grid._initialized = true;
         }
       }
+      if (!state.grid._initialized) initGrid(rect);
       drawGrid();
     }
 
@@ -233,7 +234,7 @@
         y: t.clientY - rect.top
       };
     }
-    
+
     function onDown(e) {
       if (state.grid.locked) return;
       const { x, y } = getPos(e);
@@ -265,6 +266,20 @@
       e.preventDefault();
     }
     function onUp(){ state.drag = null; }
+
+    function initGrid(rect) {
+      const g = state.grid;
+      // Make grid about 60% of the image’s shorter side
+      const target = Math.min(rect.w, rect.h) * 0.6;
+      const pxPerCell = target / 9;
+
+      g.cell = Math.max(24, Math.floor(pxPerCell)); // readable
+      g.s = 1;                                      // keep scale at 1
+      g.x = rect.x + rect.w / 2;                    // center over image
+      g.y = rect.y + rect.h / 2;
+      g._initialized = true;
+    }
+
 
     canvas.addEventListener('mousedown', onDown);
     canvas.addEventListener('mousemove', onMove);
