@@ -150,12 +150,15 @@
     }
 
     function clearHints(pos) {
+      if (!anySelected()) return;
       pushHistory();
       const grid = state.board.hints[pos];
       for (const k of state.board.selection) {
         const [r,c] = k.split(',').map(Number);
         grid[r][c].clear();
       }
+      saveToCache();
+      redraw();
     }
 
     // ---- grid sizing helpers (no rotation) ----
@@ -674,6 +677,33 @@
       if ((e.ctrlKey || e.metaKey) && m) {
         e.preventDefault();
         commitHint('center', +m[1]);
+        return;
+      }
+
+      // --- Clear specific hint rows with Backspace/Delete combos ---
+      // Order matters: check Q-hold first, then Cmd/Ctrl, then Shift.
+
+      if ((e.key === 'Backspace' || e.key === 'Delete') && state.mod.zDown) {
+        // Q + Backspace → clear BOTTOM hints
+        e.preventDefault();
+        clearHints('bottom');
+        setStatus('Cleared bottom hints in selection.');
+        return;
+      }
+
+      if ((e.key === 'Backspace' || e.key === 'Delete') && (e.metaKey || e.ctrlKey)) {
+        // Cmd/Ctrl + Backspace → clear CENTER hints
+        e.preventDefault();
+        clearHints('center');
+        setStatus('Cleared center hints in selection.');
+        return;
+      }
+
+      if ((e.key === 'Backspace' || e.key === 'Delete') && e.shiftKey) {
+        // Shift + Backspace → clear TOP hints
+        e.preventDefault();
+        clearHints('top');
+        setStatus('Cleared top hints in selection.');
         return;
       }
 
