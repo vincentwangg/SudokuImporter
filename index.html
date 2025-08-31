@@ -3,84 +3,45 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sudoku Overlay — Step 1</title>
+  <title>Sudoku Overlay — Grid Align (No Rotate)</title>
   <style>
     :root { --bg:#0f1115; --panel:#171a21; --text:#e6e8ee; --muted:#9aa3b2; --accent:#4da3ff; }
     * { box-sizing: border-box; }
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font: 15px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
 
-    canvas {
-      display: block;
-      margin: auto;
-      background: #0b0d12;
-      max-width: 800px;
-      max-height: 600px;
-      width: 100%;
-      height: auto;
-    }
-    .toolbar {
-      position: fixed;
-      inset: 12px 12px auto 12px;
-      background: var(--panel);
-      border: 1px solid #2a2f3a;
-      border-radius: 14px;
-      padding: 8px;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      z-index: 3;
-      box-shadow: 0 8px 24px rgba(0,0,0,.2);
-    }
-    .btn {
-      appearance: none;
-      border: 1px solid #2a2f3a;
-      background: #1c2130;
-      color: var(--text);
-      padding: 8px 12px;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: 600;
-    }
+    .toolbar { position: fixed; inset: 12px 12px auto 12px; background: var(--panel);
+      border: 1px solid #2a2f3a; border-radius: 14px; padding: 8px 10px; display: flex;
+      gap: 8px; align-items: center; z-index: 3; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+    .btn { appearance: none; border: 1px solid #2a2f3a; background: #1c2130; color: var(--text);
+      padding: 8px 12px; border-radius: 10px; cursor: pointer; font-weight: 600; }
     .btn:hover { border-color: #3a4252; }
     .file { position: relative; overflow: hidden; }
     .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-    .status { color: var(--muted); font-size: 13px; }
+    .status { color: var(--muted); font-size: 13px; margin-left: 4px; }
 
     .stage-wrap { position: fixed; inset: 0; display: grid; }
-    canvas { width: 100%; height: 100%; background: #0b0d12; display: block; }
+    canvas {
+      display: block;
+      background: #0b0d12;
+      /* keep things readable; tweak these if needed */
+      max-width: 1000px;
+      max-height: 720px;
+      width: 100%;
+      height: auto;
+      margin: auto;
+    }
 
-    .drop-hint {
-      position: fixed;
-      inset: 0;
-      display: none;
-      place-items: center;
-      pointer-events: none;
-      z-index: 2;
-    }
+    .drop-hint { position: fixed; inset: 0; display: none; place-items: center; pointer-events: none; z-index: 2; }
     .drop-hint.show { display: grid; }
-    .drop-card {
-      border: 2px dashed var(--accent);
-      border-radius: 16px;
-      padding: 28px 32px;
-      background: rgba(20, 90, 200, .12);
-      color: var(--text);
-      font-size: 18px;
-      text-align: center;
-      user-select: none;
-    }
-    .kbd {
-      background: #111521;
-      border: 1px solid #2a2f3a;
-      padding: 2px 6px;
-      border-radius: 6px;
-      font-size: .9em;
-    }
+    .drop-card { border: 2px dashed var(--accent); border-radius: 16px; padding: 28px 32px;
+      background: rgba(20, 90, 200, .12); color: var(--text); font-size: 18px; text-align: center; user-select: none; }
+    .kbd { background: #111521; border: 1px solid #2a2f3a; padding: 2px 6px; border-radius: 6px; font-size: .9em; }
+
+    .row { display: inline-flex; gap: 10px; align-items: center; }
+    .range { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    input[type="range"] { width: 120px; }
+    .pill { padding: 4px 8px; border-radius: 999px; background:#111521; border:1px solid #2a2f3a; color:var(--muted); font-size:12px; }
   </style>
 </head>
 <body>
@@ -88,6 +49,15 @@
     <label class="btn file">Upload image
       <input id="fileInput" type="file" accept="image/*" />
     </label>
+
+    <div class="row">
+      <button id="lockBtn" class="btn">Lock Grid</button>
+      <label class="range">Opacity
+        <input id="opacity" type="range" min="0.1" max="1" step="0.05" value="0.8" />
+      </label>
+      <span class="pill" id="gridTip">Drag to move • □ corner to scale</span>
+    </div>
+
     <span class="status" id="status">Drop an image anywhere or use Upload.</span>
   </div>
 
@@ -96,34 +66,45 @@
   </div>
 
   <div class="drop-hint" id="dropHint" aria-hidden="true">
-    <div class="drop-card">Drop your Sudoku screenshot here<br/>
-      <small>(or press <span class="kbd">U</span> to open file picker)</small>
-    </div>
+    <div class="drop-card">Drop your Sudoku screenshot here<br/><small>(or press <span class="kbd">U</span> to open file picker)</small></div>
   </div>
 
   <script>
-    // ---- State ----
+    // ---------------- State ----------------
     const state = {
-      img: null,
-      imgNaturalW: 0,
-      imgNaturalH: 0,
+      img: null, imgNaturalW: 0, imgNaturalH: 0,
+      grid: { x: 0, y: 0, s: 1, cell: 50, locked: false, opacity: 0.8, _initialized: false },
+      drag: null // {mode:'move'|'scale', gx,gy, s0, dist0}
     };
 
-    // ---- Elements ----
+    // --------------- Elements --------------
     const canvas = document.getElementById('stage');
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status');
     const fileInput = document.getElementById('fileInput');
     const dropHint = document.getElementById('dropHint');
+    const lockBtn = document.getElementById('lockBtn');
+    const opacityEl = document.getElementById('opacity');
 
-    // ---- Helpers ----
-    function setStatus(msg) { statusEl.textContent = msg; }
+    // --------------- Helpers ---------------
+    const setStatus = (msg) => statusEl.textContent = msg;
+
+    function resizeCanvasToDisplaySize() {
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = canvas.clientWidth | 0;
+      const cssH = canvas.clientHeight | 0;
+      const need = canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr);
+      if (need) {
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        ctx.setTransform(dpr,0,0,dpr,0,0);
+      }
+      return need;
+    }
 
     function fitImageRect(imgW, imgH, viewW, viewH) {
-      // Cap image size for readability
-      const maxW = viewW * 0.9;
-      const maxH = viewH * 0.7;
-      const scale = Math.min(maxW / imgW, maxH / imgH);
+      // Canvas size already capped via CSS; just contain the image
+      const scale = Math.min(viewW / imgW, viewH / imgH);
       const w = Math.max(1, Math.floor(imgW * scale));
       const h = Math.max(1, Math.floor(imgH * scale));
       const x = Math.floor((viewW - w) / 2);
@@ -131,36 +112,100 @@
       return { x, y, w, h };
     }
 
-    function resizeCanvasToDisplaySize() {
-      const dpr = window.devicePixelRatio || 1;
-      const cssW = canvas.clientWidth | 0;
-      const cssH = canvas.clientHeight | 0;
-      const needResize = canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr);
-      if (needResize) {
-        canvas.width = Math.round(cssW * dpr);
-        canvas.height = Math.round(cssH * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      }
-      return needResize;
+    function clearCanvas() {
+      ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.restore();
     }
 
-    function clearCanvas() {
+    // --------------- Grid math -------------
+    const gridPx = () => state.grid.cell * state.grid.s;      // size of one cell in screen px
+    const gridHalf = () => (gridPx() * 9) / 2;
+
+    function pointInGrid(px, py) {
+      // axis-aligned grid (no rotation)
+      const half = gridHalf();
+      return Math.abs(px - state.grid.x) <= half && Math.abs(py - state.grid.y) <= half;
+    }
+
+    function scaleHandleRect() {
+      // square handle at bottom-right corner of the grid
+      const half = gridHalf();
+      const size = Math.max(10, gridPx() * 0.3);
+      const cx = state.grid.x + half, cy = state.grid.y + half;
+      return { x: cx - size/2, y: cy - size/2, w: size, h: size };
+    }
+
+    function hitHandle(px, py) {
+      const h = scaleHandleRect();
+      return (px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h) ? 'scale' : null;
+    }
+
+    // --------------- Drawing ----------------
+    function drawGrid() {
+      const { x, y, s, cell, opacity } = state.grid;
+      const size = cell * 9 * s;
+      const half = size / 2;
+
+      // background overlay
       ctx.save();
-      ctx.setTransform(1,0,0,1,0,0);
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.globalAlpha = opacity;
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      ctx.fillRect(x - half, y - half, size, size);
+
+      // lines
+      ctx.lineCap = 'butt';
+      for (let i = 0; i <= 9; i++) {
+        ctx.beginPath();
+        ctx.lineWidth = (i % 3 === 0) ? 2 : 1;
+        ctx.strokeStyle = (i % 3 === 0) ? '#ffffff' : '#b7c0cf';
+        // vertical
+        const vx = x - half + i * gridPx();
+        ctx.moveTo(vx, y - half);
+        ctx.lineTo(vx, y + half);
+        ctx.stroke();
+        // horizontal
+        ctx.beginPath();
+        ctx.lineWidth = (i % 3 === 0) ? 2 : 1;
+        const hy = y - half + i * gridPx();
+        ctx.moveTo(x - half, hy);
+        ctx.lineTo(x + half, hy);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // scale handle (square)
+      const h = scaleHandleRect();
+      ctx.save();
+      ctx.fillStyle = '#111';
+      ctx.globalAlpha = 0.9;
+      ctx.fillRect(h.x, h.y, h.w, h.h);
+      ctx.lineWidth = 2; ctx.strokeStyle = '#4da3ff';
+      ctx.strokeRect(h.x, h.y, h.w, h.h);
       ctx.restore();
     }
 
     function redraw() {
       resizeCanvasToDisplaySize();
       clearCanvas();
-      if (!state.img) return;
-      const rect = fitImageRect(state.imgNaturalW, state.imgNaturalH, canvas.clientWidth, canvas.clientHeight);
-      ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(state.img, rect.x, rect.y, rect.w, rect.h);
+      if (state.img) {
+        const rect = fitImageRect(state.imgNaturalW, state.imgNaturalH, canvas.clientWidth, canvas.clientHeight);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(state.img, rect.x, rect.y, rect.w, rect.h);
+
+        // initialize grid once per image
+        if (!state.grid._initialized) {
+          state.grid.x = rect.x + rect.w/2;
+          state.grid.y = rect.y + rect.h/2;
+          state.grid.s = 1;
+          state.grid.cell = Math.max(24, Math.floor(Math.min(rect.w, rect.h) / 9));
+          state.grid._initialized = true;
+        }
+      }
+      drawGrid();
     }
 
-    // ---- Image loading ----
+    // --------------- Image loading ----------
     async function handleFile(file) {
       if (!file || !file.type.startsWith('image/')) return;
       setStatus(`Loading: ${file.name}`);
@@ -171,53 +216,82 @@
         state.img = img;
         state.imgNaturalW = img.naturalWidth;
         state.imgNaturalH = img.naturalHeight;
+        state.grid._initialized = false;
         setStatus(`${file.name} — ${img.naturalWidth}×${img.naturalHeight}`);
         redraw();
       };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        setStatus('Failed to load image. Try a different file.');
-      };
+      img.onerror = () => { URL.revokeObjectURL(url); setStatus('Failed to load image. Try a different file.'); };
       img.src = url;
     }
 
-    // ---- File input ----
-    fileInput.addEventListener('change', (e) => {
-      const f = e.target.files && e.target.files[0];
-      handleFile(f);
-      e.target.value = '';
-    });
-
-    // ---- Drag & Drop ----
-    function showHint(show) { dropHint.classList.toggle('show', !!show); }
-
-    ['dragenter','dragover'].forEach(type => {
-      window.addEventListener(type, (e) => {
-        e.preventDefault();
-        e.dataTransfer && (e.dataTransfer.dropEffect = 'copy');
-        showHint(true);
-      });
-    });
-
-    ['dragleave','drop'].forEach(type => {
-      window.addEventListener(type, (e) => {
-        e.preventDefault();
-        if (type === 'drop') {
-          const files = e.dataTransfer && e.dataTransfer.files;
-          if (files && files[0]) handleFile(files[0]);
-        }
-        showHint(false);
-      });
-    });
-
-    // ---- Keyboard: quick open ----
-    window.addEventListener('keydown', (e) => {
-      if ((e.key === 'u' || e.key === 'U') && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        fileInput.click();
+    // --------------- Input ------------------
+    function getPos(e) {
+      const t = (e.touches && e.touches[0]) || e;
+      const rect = canvas.getBoundingClientRect(); // canvas position on the page
+      return {
+        x: t.clientX - rect.left,
+        y: t.clientY - rect.top
+      };
+    }
+    
+    function onDown(e) {
+      if (state.grid.locked) return;
+      const { x, y } = getPos(e);
+      const handle = hitHandle(x, y);
+      if (handle === 'scale') {
+        const dx = x - state.grid.x, dy = y - state.grid.y;
+        state.drag = { mode: 'scale', s0: state.grid.s, dist0: Math.hypot(dx, dy) };
+      } else if (pointInGrid(x, y)) {
+        state.drag = { mode: 'move', gx: state.grid.x - x, gy: state.grid.y - y };
+      } else {
+        return;
       }
-    });
+      e.preventDefault();
+    }
 
-    // ---- Resize handling ----
+    function onMove(e) {
+      if (!state.drag) return;
+      const { x, y } = getPos(e);
+      if (state.drag.mode === 'move') {
+        state.grid.x = x + state.drag.gx;
+        state.grid.y = y + state.drag.gy;
+      } else if (state.drag.mode === 'scale') {
+        const dx = x - state.grid.x, dy = y - state.grid.y;
+        const dist = Math.hypot(dx, dy);
+        const k = Math.max(0.2, Math.min(5, dist / state.drag.dist0));
+        state.grid.s = state.drag.s0 * k;
+      }
+      redraw();
+      e.preventDefault();
+    }
+    function onUp(){ state.drag = null; }
+
+    canvas.addEventListener('mousedown', onDown);
+    canvas.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    canvas.addEventListener('touchstart', onDown, {passive:false});
+    canvas.addEventListener('touchmove', onMove, {passive:false});
+    window.addEventListener('touchend', onUp);
+
+    // UI controls
+    lockBtn.addEventListener('click', () => {
+      state.grid.locked = !state.grid.locked;
+      lockBtn.textContent = state.grid.locked ? 'Unlock Grid' : 'Lock Grid';
+    });
+    opacityEl.addEventListener('input', (e) => { state.grid.opacity = +e.target.value; redraw(); });
+
+    // --------------- Drag & Drop ------------
+    const showHint = (b) => dropHint.classList.toggle('show', !!b);
+    ['dragenter','dragover'].forEach(t => window.addEventListener(t, (e)=>{ e.preventDefault(); e.dataTransfer&&(e.dataTransfer.dropEffect='copy'); showHint(true); }));
+    ['dragleave','drop'].forEach(t => window.addEventListener(t, (e)=>{ e.preventDefault(); if(t==='drop'){ const f=e.dataTransfer&&e.dataTransfer.files; if(f&&f[0]) handleFile(f[0]); } showHint(false); }));
+
+    // --------------- File input -------------
+    fileInput.addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; handleFile(f); e.target.value=''; });
+
+    // --------------- Keyboard ---------------
+    window.addEventListener('keydown', (e) => { if ((e.key === 'u' || e.key === 'U') && !e.metaKey && !e.ctrlKey && !e.altKey) fileInput.click(); });
+
+    // --------------- Resize -----------------
     const ro = new ResizeObserver(() => redraw());
     ro.observe(document.body);
     window.addEventListener('orientationchange', () => setTimeout(redraw, 100));
@@ -227,4 +301,3 @@
   </script>
 </body>
 </html>
-
