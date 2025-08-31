@@ -395,7 +395,13 @@
         const handle = hitHandle(x, y);
         if (handle === 'scale') {
           const dx = x - state.grid.x, dy = y - state.grid.y;
-          state.drag = { mode: 'scale', s0: state.grid.s, dist0: Math.hypot(dx, dy) };
+          const half0 = gridHalf(); // uses current s
+          const tlx0 = state.grid.x - half0;
+          const tly0 = state.grid.y - half0;
+          state.drag = {
+            mode: 'scale',
+            tlx0, tly0 // anchor: fixed top-left during scaling
+          };
         } else if (pointInGrid(x, y)) {
           state.drag = { mode: 'move', gx: state.grid.x - x, gy: state.grid.y - y };
         }
@@ -439,10 +445,19 @@
           state.grid.x = x + state.drag.gx;
           state.grid.y = y + state.drag.gy;
         } else if (state.drag.mode === 'scale') {
-          const dx = x - state.grid.x, dy = y - state.grid.y;
-          const dist = Math.hypot(dx, dy);
-          const k = Math.max(0.2, Math.min(5, dist / state.drag.dist0));
-          state.grid.s = state.drag.s0 * k;
+          // Desired bottom-right follows the cursor; top-left stays at tlx0,tly0
+          const sizeUnit = state.grid.cell * 9;            // size when s = 1
+          const newSize  = Math.max( x - state.drag.tlx0,  y - state.drag.tly0 );
+          let s = newSize / sizeUnit;
+
+          // clamp like before
+          s = Math.max(0.2, Math.min(5, s));
+          state.grid.s = s;
+
+          // Recompute center so that top-left remains fixed
+          const half = (sizeUnit * s) / 2;
+          state.grid.x = state.drag.tlx0 + half;
+          state.grid.y = state.drag.tly0 + half;
         }
         redraw(); e.preventDefault(); return;
       }
