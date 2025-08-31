@@ -76,6 +76,7 @@
 
   <script>
     // ---------------- State ----------------
+    const makeHintGrid = () => Array.from({length:9}, () => Array.from({length:9}, () => new Set()));
     const state = {
       img: null, imgNaturalW: 0, imgNaturalH: 0,
       mode: 'align', // 'align' | 'solve'
@@ -86,7 +87,11 @@
       board: {
         x: 0, y: 0, cell: 0,
         values: Array.from({length:9}, () => Array(9).fill(0)),
-        hints:  Array.from({length:9}, () => Array.from({length:9}, () => new Set())),
+        hints: {
+          center: makeHintGrid(),
+          top:    makeHintGrid(),
+          bottom: makeHintGrid(),
+        },
         selection: new Set(),
         anchor: { r:-1, c:-1 }
       },
@@ -131,18 +136,24 @@
 
     function clearCanvas() { ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.restore(); }
 
-    function commitHint(d) {
+    function commitHint(pos, d) { // pos: 'center' | 'top' | 'bottom'
       if (state.mode !== 'solve' || !anySelected()) return;
+      const grid = state.board.hints[pos];
       for (const k of state.board.selection) {
         const [r, c] = k.split(',').map(Number);
-        // don't add hints over filled cells
-        if (state.board.values[r][c] !== 0) continue;
-
-        const set = state.board.hints[r][c];
-        if (set.has(d)) set.delete(d);   // toggle behavior
-        else set.add(d);
+        if (state.board.values[r][c] !== 0) continue; // don't hint over final digits
+        const set = grid[r][c];
+        set.has(d) ? set.delete(d) : set.add(d);
       }
       redraw();
+    }
+
+    function clearHints(pos) {
+      const grid = state.board.hints[pos];
+      for (const k of state.board.selection) {
+        const [r,c] = k.split(',').map(Number);
+        grid[r][c].clear();
+      }
     }
 
     // ---- grid sizing helpers (no rotation) ----
@@ -287,27 +298,33 @@
       }
       ctx.restore();
 
-      // hints (half-size, centered)
+      // Hints (half-size). We draw top, center, bottom if cell is empty.
       ctx.save();
-      ctx.fillStyle = '#8aa2c0'; // muted vs main digits
+      ctx.fillStyle = '#8aa2c0';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-
-      // half of normal font (normal is 0.75 * cell)
-      const hintFontPx = Math.floor(state.board.cell * 0.375);
-      ctx.font = `${hintFontPx}px system-ui, -apple-system, sans-serif`;
+      const smallerHintFontPx = Math.floor(state.board.cell * 0.275);
+      ctx.font = `${smallerHintFontPx}px system-ui, -apple-system, sans-serif`;
 
       for (let r = 0; r < 9; r++) {
         for (let c = 0; c < 9; c++) {
-          if (values[r][c] !== 0) continue; // only show hints on empty cells
-          const set = state.board.hints[r][c];
-          if (!set || set.size === 0) continue;
-
-          // join sorted hints; centered string like "137"
-          const text = Array.from(set).sort((a,b)=>a-b).join('');
+          if (values[r][c] !== 0) continue; // hide hints when a final digit exists
           const cx = x + c*cell + cell/2;
-          const cy = y + r*cell + cell/2;
-          ctx.fillText(text, cx, cy + 0.5);
+
+          // positions (tweak offsets if you like)
+          const cyTop    = y + r*cell + cell*0.18;
+          const cyCenter = y + r*cell + cell*0.50;
+          const cyBottom = y + r*cell + cell*0.82;
+
+          const drawSet = (set, cy) => {
+            if (!set || set.size === 0) return;
+            const text = Array.from(set).sort((a,b)=>a-b).join('');
+            ctx.fillText(text, cx, cy);
+          };
+
+          drawSet(state.board.hints.top[r][c],    cyTop);
+          drawSet(state.board.hints.center[r][c], cyCenter);
+          drawSet(state.board.hints.bottom[r][c], cyBottom);
         }
       }
       ctx.restore();
@@ -483,7 +500,11 @@
       for (const k of state.board.selection) {
         const [r,c] = k.split(',').map(Number);
         state.board.values[r][c] = d; // 0 clears
-        if (d !== 0) state.board.hints[r][c].clear(); // remove pencil marks
+        if (d !== 0) {
+          state.board.hints.center[r][c].clear();
+          state.board.hints.top[r][c].clear();
+          state.board.hints.bottom[r][c].clear();
+        }
       }
       redraw();
     }
@@ -502,11 +523,36 @@
       if ((e.key === 'u' || e.key === 'U') && !e.metaKey && !e.ctrlKey && !e.altKey) { fileInput.click(); return; }
       if (state.mode !== 'solve') return;
 
-      // Ctrl/Cmd + number => toggle hint
-      if ((e.ctrlKey || e.metaKey) && /^[1-9]$/.test(e.key)) {
+      // ---- HINT MODIFIERS ----
+      // Map Digit1..Digit9 to 1..9 (works with Shift)
+      const digitMatch = /^Digit([1-9])$/;
+      const m = digitMatch.exec(e.code);
+
+      // Bottom hints: hold Z + number
+      if (state.mod.zDown && m) {
         e.preventDefault();
-        commitHint(+e.key);
+        commitHint('bottom', +m[1]);
         return;
+      }
+      // Top hints: Shift + number
+      if (e.shiftKey && m) {
+        e.preventDefault();
+        commitHint('top', +m[1]);
+        return;
+      }
+      // Center hints: Ctrl/Cmd + number
+      if ((e.ctrlKey || e.metaKey) && m) {
+        e.preventDefault();
+        commitHint('center', +m[1]);
+        return;
+      }
+
+      // Clear hints in a region with the same modifier + 0 / Backspace / Delete
+      const isZero = e.code === 'Digit0' || e.key === '0' || e.key === 'Backspace' || e.key === 'Delete';
+      if (isZero) {
+        if (state.mod.zDown) { e.preventDefault(); clearHints('bottom'); redraw(); return; }
+        if (e.shiftKey)       { e.preventDefault(); clearHints('top');    redraw(); return; }
+        if (e.ctrlKey || e.metaKey) { e.preventDefault(); clearHints('center'); redraw(); return; }
       }
 
       // digits
@@ -536,6 +582,15 @@
       }
       redraw();
     });
+
+    state.mod = { zDown: false };
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'z' || e.key === 'Z') state.mod.zDown = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'z' || e.key === 'Z') state.mod.zDown = false;
+    });
+
 
     // --------------- Resize -----------------
     const ro = new ResizeObserver(() => redraw());
