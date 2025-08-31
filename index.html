@@ -49,9 +49,6 @@
 
     <div class="row">
       <button id="confirmBtn" class="btn">Confirm Grid</button>
-      <label class="range">Opacity
-        <input id="opacity" type="range" min="0.1" max="1" step="0.05" value="0.8" />
-      </label>
       <span class="pill" id="gridTip">Align mode: drag to move • □ to scale</span>
       <div id="keypad">
         <button class="btn" data-n="1">1</button><button class="btn" data-n="2">2</button>
@@ -104,7 +101,6 @@
     const statusEl = document.getElementById('status');
     const fileInput = document.getElementById('fileInput');
     const dropHint = document.getElementById('dropHint');
-    const opacityEl = document.getElementById('opacity');
     const confirmBtn = document.getElementById('confirmBtn');
     const gridTip = document.getElementById('gridTip');
     const keypad = document.getElementById('keypad');
@@ -232,7 +228,7 @@
       for (let i = 0; i <= 9; i++) {
         ctx.beginPath();
         ctx.lineWidth = (i % 3 === 0) ? 2 : 1;
-        ctx.strokeStyle = (i % 3 === 0) ? '#ffffff' : '#b7c0cf';
+        ctx.strokeStyle = (i % 3 === 0) ? '#00e60f' : '#00e60f';
         const vx = x - half + i * gridPx();
         ctx.moveTo(vx, y - half);
         ctx.lineTo(vx, y + half);
@@ -480,8 +476,6 @@
     window.addEventListener('touchend', onUp);
 
     // --------------- UI controls ------------
-    opacityEl.addEventListener('input', (e) => { state.grid.opacity = +e.target.value; redraw(); });
-
     confirmBtn.addEventListener('click', () => {
       if (!state.img) return;
       // freeze current grid geometry into board
