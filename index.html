@@ -49,6 +49,7 @@
 
     <div class="row">
       <button id="confirmBtn" class="btn">Confirm Grid</button>
+      <button id="clearAllBtn" class="btn" title="Clear all digits & hints">Clear All</button>
       <span class="pill" id="gridTip">Align mode: drag to move • □ to scale</span>
       <div id="keypad">
         <button class="btn" data-n="1">1</button><button class="btn" data-n="2">2</button>
@@ -103,6 +104,7 @@
     const fileInput = document.getElementById('fileInput');
     const dropHint = document.getElementById('dropHint');
     const confirmBtn = document.getElementById('confirmBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
     const gridTip = document.getElementById('gridTip');
     const keypad = document.getElementById('keypad');
     const saveBtn = document.getElementById('saveBtn');
@@ -787,6 +789,38 @@
         canvas.toBlob((blob) => resolve(blob), 'image/png');
       });
     }
+
+    function clearAllBoard() {
+      if (!state.img) { setStatus('Nothing to clear yet.'); return; }
+
+      // Only meaningful in solve mode; in align mode there’s nothing to clear.
+      if (state.mode !== 'solve') { setStatus('Switch to Solve to clear.'); return; }
+
+      if (!confirm('Clear ALL digits and ALL hints?')) {
+        setStatus('Clear canceled.');
+        return;
+      }
+
+      pushHistory();
+
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          state.board.values[r][c] = 0;
+          state.board.hints.center[r][c].clear();
+          state.board.hints.top[r][c].clear();
+          state.board.hints.bottom[r][c].clear();
+        }
+      }
+
+      state.board.selection.clear();
+      state.board.anchor = { r:-1, c:-1 };
+
+      saveToCache();
+      redraw();
+      setStatus('Cleared all digits and hints.');
+    }
+
+    clearAllBtn.addEventListener('click', clearAllBoard);
 
     async function saveCanvasAs() {
       if (!state.img) { setStatus('Nothing to save yet.'); return; }
