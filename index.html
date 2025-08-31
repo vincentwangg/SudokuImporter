@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sudoku Overlay — Step 1</title>
+  <style>
+    :root { --bg:#0f1115; --panel:#171a21; --text:#e6e8ee; --muted:#9aa3b2; --accent:#4da3ff; }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .toolbar {
+      position: fixed;
+      inset: 12px 12px auto 12px;
+      background: var(--panel);
+      border: 1px solid #2a2f3a;
+      border-radius: 14px;
+      padding: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      z-index: 3;
+      box-shadow: 0 8px 24px rgba(0,0,0,.2);
+    }
+    .btn {
+      appearance: none;
+      border: 1px solid #2a2f3a;
+      background: #1c2130;
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn:hover { border-color: #3a4252; }
+    .file { position: relative; overflow: hidden; }
+    .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .status { color: var(--muted); font-size: 13px; }
+
+    .stage-wrap { position: fixed; inset: 0; display: grid; }
+    canvas { width: 100%; height: 100%; background: #0b0d12; display: block; }
+
+    .drop-hint {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .drop-hint.show { display: grid; }
+    .drop-card {
+      border: 2px dashed var(--accent);
+      border-radius: 16px;
+      padding: 28px 32px;
+      background: rgba(20, 90, 200, .12);
+      color: var(--text);
+      font-size: 18px;
+      text-align: center;
+      user-select: none;
+    }
+    .kbd {
+      background: #111521;
+      border: 1px solid #2a2f3a;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: .9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label class="btn file">Upload image
+      <input id="fileInput" type="file" accept="image/*" />
+    </label>
+    <span class="status" id="status">Drop an image anywhere or use Upload.</span>
+  </div>
+
+  <div class="stage-wrap">
+    <canvas id="stage" aria-label="Sudoku image canvas"></canvas>
+  </div>
+
+  <div class="drop-hint" id="dropHint" aria-hidden="true">
+    <div class="drop-card">Drop your Sudoku screenshot here<br/>
+      <small>(or press <span class="kbd">U</span> to open file picker)</small>
+    </div>
+  </div>
+
+  <script>
+    // ---- State ----
+    const state = {
+      img: null,
+      imgNaturalW: 0,
+      imgNaturalH: 0,
+    };
+
+    // ---- Elements ----
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const fileInput = document.getElementById('fileInput');
+    const dropHint = document.getElementById('dropHint');
+
+    // ---- Helpers ----
+    function setStatus(msg) { statusEl.textContent = msg; }
+
+    function fitImageRect(imgW, imgH, viewW, viewH) {
+      // Cap image size for readability
+      const maxW = viewW * 0.9;
+      const maxH = viewH * 0.7;
+      const scale = Math.min(maxW / imgW, maxH / imgH);
+      const w = Math.max(1, Math.floor(imgW * scale));
+      const h = Math.max(1, Math.floor(imgH * scale));
+      const x = Math.floor((viewW - w) / 2);
+      const y = Math.floor((viewH - h) / 2);
+      return { x, y, w, h };
+    }
+
+    function resizeCanvasToDisplaySize() {
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = canvas.clientWidth | 0;
+      const cssH = canvas.clientHeight | 0;
+      const needResize = canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr);
+      if (needResize) {
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      return needResize;
+    }
+
+    function clearCanvas() {
+      ctx.save();
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.restore();
+    }
+
+    function redraw() {
+      resizeCanvasToDisplaySize();
+      clearCanvas();
+      if (!state.img) return;
+      const rect = fitImageRect(state.imgNaturalW, state.imgNaturalH, canvas.clientWidth, canvas.clientHeight);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(state.img, rect.x, rect.y, rect.w, rect.h);
+    }
+
+    // ---- Image loading ----
+    async function handleFile(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      setStatus(`Loading: ${file.name}`);
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        state.img = img;
+        state.imgNaturalW = img.naturalWidth;
+        state.imgNaturalH = img.naturalHeight;
+        setStatus(`${file.name} — ${img.naturalWidth}×${img.naturalHeight}`);
+        redraw();
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        setStatus('Failed to load image. Try a different file.');
+      };
+      img.src = url;
+    }
+
+    // ---- File input ----
+    fileInput.addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      handleFile(f);
+      e.target.value = '';
+    });
+
+    // ---- Drag & Drop ----
+    function showHint(show) { dropHint.classList.toggle('show', !!show); }
+
+    ['dragenter','dragover'].forEach(type => {
+      window.addEventListener(type, (e) => {
+        e.preventDefault();
+        e.dataTransfer && (e.dataTransfer.dropEffect = 'copy');
+        showHint(true);
+      });
+    });
+
+    ['dragleave','drop'].forEach(type => {
+      window.addEventListener(type, (e) => {
+        e.preventDefault();
+        if (type === 'drop') {
+          const files = e.dataTransfer && e.dataTransfer.files;
+          if (files && files[0]) handleFile(files[0]);
+        }
+        showHint(false);
+      });
+    });
+
+    // ---- Keyboard: quick open ----
+    window.addEventListener('keydown', (e) => {
+      if ((e.key === 'u' || e.key === 'U') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        fileInput.click();
+      }
+    });
+
+    // ---- Resize handling ----
+    const ro = new ResizeObserver(() => redraw());
+    ro.observe(document.body);
+    window.addEventListener('orientationchange', () => setTimeout(redraw, 100));
+
+    // First paint
+    redraw();
+  </script>
+</body>
+</html>
+
