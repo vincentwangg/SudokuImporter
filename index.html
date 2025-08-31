@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sudoku Overlay — Grid Align (No Rotate)</title>
+  <title>Sudoku Overlay — Align → Solve</title>
   <style>
     :root { --bg:#0f1115; --panel:#171a21; --text:#e6e8ee; --muted:#9aa3b2; --accent:#4da3ff; }
     * { box-sizing: border-box; }
@@ -12,24 +12,22 @@
 
     .toolbar { position: fixed; inset: 12px 12px auto 12px; background: var(--panel);
       border: 1px solid #2a2f3a; border-radius: 14px; padding: 8px 10px; display: flex;
-      gap: 8px; align-items: center; z-index: 3; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+      gap: 10px; align-items: center; z-index: 3; box-shadow: 0 8px 24px rgba(0,0,0,.2); flex-wrap: wrap; }
     .btn { appearance: none; border: 1px solid #2a2f3a; background: #1c2130; color: var(--text);
       padding: 8px 12px; border-radius: 10px; cursor: pointer; font-weight: 600; }
     .btn:hover { border-color: #3a4252; }
     .file { position: relative; overflow: hidden; }
     .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
     .status { color: var(--muted); font-size: 13px; margin-left: 4px; }
+    .row { display: inline-flex; gap: 10px; align-items: center; }
+    .range { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    input[type="range"] { width: 120px; }
+    .pill { padding: 4px 8px; border-radius: 999px; background:#111521; border:1px solid #2a2f3a; color:var(--muted); font-size:12px; }
 
     .stage-wrap { position: fixed; inset: 0; display: grid; }
     canvas {
-      display: block;
-      background: #0b0d12;
-      /* keep things readable; tweak these if needed */
-      max-width: 1000px;
-      max-height: 720px;
-      width: 100%;
-      height: auto;
-      margin: auto;
+      display: block; background: #0b0d12;
+      max-width: 1000px; max-height: 720px; width: 100%; height: auto; margin: auto;
     }
 
     .drop-hint { position: fixed; inset: 0; display: none; place-items: center; pointer-events: none; z-index: 2; }
@@ -38,10 +36,9 @@
       background: rgba(20, 90, 200, .12); color: var(--text); font-size: 18px; text-align: center; user-select: none; }
     .kbd { background: #111521; border: 1px solid #2a2f3a; padding: 2px 6px; border-radius: 6px; font-size: .9em; }
 
-    .row { display: inline-flex; gap: 10px; align-items: center; }
-    .range { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-    input[type="range"] { width: 120px; }
-    .pill { padding: 4px 8px; border-radius: 999px; background:#111521; border:1px solid #2a2f3a; color:var(--muted); font-size:12px; }
+    /* keypad */
+    #keypad { display:none; gap:6px; }
+    #keypad .btn { padding: 6px 10px; }
   </style>
 </head>
 <body>
@@ -51,11 +48,19 @@
     </label>
 
     <div class="row">
-      <button id="lockBtn" class="btn">Lock Grid</button>
+      <button id="confirmBtn" class="btn">Confirm Grid</button>
       <label class="range">Opacity
         <input id="opacity" type="range" min="0.1" max="1" step="0.05" value="0.8" />
       </label>
-      <span class="pill" id="gridTip">Drag to move • □ corner to scale</span>
+      <span class="pill" id="gridTip">Align mode: drag to move • □ to scale</span>
+      <div id="keypad">
+        <button class="btn" data-n="1">1</button><button class="btn" data-n="2">2</button>
+        <button class="btn" data-n="3">3</button><button class="btn" data-n="4">4</button>
+        <button class="btn" data-n="5">5</button><button class="btn" data-n="6">6</button>
+        <button class="btn" data-n="7">7</button><button class="btn" data-n="8">8</button>
+        <button class="btn" data-n="9">9</button>
+        <button class="btn" data-n="0" title="Clear cell">⌫</button>
+      </div>
     </div>
 
     <span class="status" id="status">Drop an image anywhere or use Upload.</span>
@@ -73,8 +78,14 @@
     // ---------------- State ----------------
     const state = {
       img: null, imgNaturalW: 0, imgNaturalH: 0,
-      grid: { x: 0, y: 0, s: 1, cell: 50, locked: false, opacity: 0.8, _initialized: false },
-      drag: null // {mode:'move'|'scale', gx,gy, s0, dist0}
+      mode: 'align', // 'align' | 'solve'
+      grid: { x: 0, y: 0, s: 1, cell: 50, opacity: 0.8, _initialized: false },
+      drag: null, // {mode:'move'|'scale', gx,gy, s0, dist0}
+      board: {
+        x: 0, y: 0, cell: 0,
+        values: Array.from({length:9}, () => Array(9).fill(0)),
+        selected: { r:-1, c:-1 }
+      }
     };
 
     // --------------- Elements --------------
@@ -83,8 +94,10 @@
     const statusEl = document.getElementById('status');
     const fileInput = document.getElementById('fileInput');
     const dropHint = document.getElementById('dropHint');
-    const lockBtn = document.getElementById('lockBtn');
     const opacityEl = document.getElementById('opacity');
+    const confirmBtn = document.getElementById('confirmBtn');
+    const gridTip = document.getElementById('gridTip');
+    const keypad = document.getElementById('keypad');
 
     // --------------- Helpers ---------------
     const setStatus = (msg) => statusEl.textContent = msg;
@@ -103,7 +116,6 @@
     }
 
     function fitImageRect(imgW, imgH, viewW, viewH) {
-      // Canvas size already capped via CSS; just contain the image
       const scale = Math.min(viewW / imgW, viewH / imgH);
       const w = Math.max(1, Math.floor(imgW * scale));
       const h = Math.max(1, Math.floor(imgH * scale));
@@ -112,33 +124,38 @@
       return { x, y, w, h };
     }
 
-    function clearCanvas() {
-      ctx.save(); ctx.setTransform(1,0,0,1,0,0);
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.restore();
-    }
+    function clearCanvas() { ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.restore(); }
 
-    // --------------- Grid math -------------
-    const gridPx = () => state.grid.cell * state.grid.s;      // size of one cell in screen px
+    // ---- grid sizing helpers (no rotation) ----
+    const gridPx = () => state.grid.cell * state.grid.s;      // one cell px
     const gridHalf = () => (gridPx() * 9) / 2;
-
     function pointInGrid(px, py) {
-      // axis-aligned grid (no rotation)
       const half = gridHalf();
       return Math.abs(px - state.grid.x) <= half && Math.abs(py - state.grid.y) <= half;
     }
-
     function scaleHandleRect() {
-      // square handle at bottom-right corner of the grid
       const half = gridHalf();
-      const size = Math.max(10, gridPx() * 0.3);
+      const size = Math.max(20, gridPx() * 0.35);
       const cx = state.grid.x + half, cy = state.grid.y + half;
       return { x: cx - size/2, y: cy - size/2, w: size, h: size };
     }
-
     function hitHandle(px, py) {
       const h = scaleHandleRect();
       return (px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h) ? 'scale' : null;
+    }
+    function gridRect() {
+      const size = gridPx() * 9;
+      const half = size / 2;
+      return { x: state.grid.x - half, y: state.grid.y - half, w: size, h: size, cell: gridPx() };
+    }
+
+    // ---- board helpers ----
+    function boardHit(px, py) {
+      const { x, y, cell } = state.board;
+      const r = Math.floor((py - y) / cell);
+      const c = Math.floor((px - x) / cell);
+      if (r >= 0 && r < 9 && c >= 0 && c < 9) return { r, c };
+      return null;
     }
 
     // --------------- Drawing ----------------
@@ -147,9 +164,10 @@
       const size = cell * 9 * s;
       const half = size / 2;
 
-      // background overlay
       ctx.save();
       ctx.globalAlpha = opacity;
+
+      // faint backdrop
       ctx.fillStyle = 'rgba(0,0,0,0.15)';
       ctx.fillRect(x - half, y - half, size, size);
 
@@ -159,12 +177,11 @@
         ctx.beginPath();
         ctx.lineWidth = (i % 3 === 0) ? 2 : 1;
         ctx.strokeStyle = (i % 3 === 0) ? '#ffffff' : '#b7c0cf';
-        // vertical
         const vx = x - half + i * gridPx();
         ctx.moveTo(vx, y - half);
         ctx.lineTo(vx, y + half);
         ctx.stroke();
-        // horizontal
+
         ctx.beginPath();
         ctx.lineWidth = (i % 3 === 0) ? 2 : 1;
         const hy = y - half + i * gridPx();
@@ -177,11 +194,51 @@
       // scale handle (square)
       const h = scaleHandleRect();
       ctx.save();
-      ctx.fillStyle = '#111';
-      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#111'; ctx.globalAlpha = 0.9;
       ctx.fillRect(h.x, h.y, h.w, h.h);
       ctx.lineWidth = 2; ctx.strokeStyle = '#4da3ff';
       ctx.strokeRect(h.x, h.y, h.w, h.h);
+      ctx.restore();
+    }
+
+    function drawBoard() {
+      const { x, y, cell, values, selected } = state.board;
+
+      // selected cell highlight
+      if (selected.r >= 0) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(77,163,255,0.25)';
+        ctx.fillRect(x + selected.c*cell, y + selected.r*cell, cell, cell);
+        ctx.restore();
+      }
+
+      // subtle 3x3 boxes to keep orientation
+      ctx.save();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      for (let br = 0; br < 3; br++) {
+        for (let bc = 0; bc < 3; bc++) {
+          ctx.strokeRect(x + bc*3*cell, y + br*3*cell, 3*cell, 3*cell);
+        }
+      }
+      ctx.restore();
+
+      // numbers
+      ctx.save();
+      ctx.fillStyle = '#000000';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `${Math.floor(cell * 0.6)}px system-ui, -apple-system, sans-serif`;
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          const v = values[r][c];
+          if (v) {
+            const cx = x + c*cell + cell/2;
+            const cy = y + r*cell + cell/2;
+            ctx.fillText(String(v), cx, cy + 1);
+          }
+        }
+      }
       ctx.restore();
     }
 
@@ -193,17 +250,13 @@
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(state.img, rect.x, rect.y, rect.w, rect.h);
 
-        // initialize grid once per image
         if (!state.grid._initialized) {
-          state.grid.x = rect.x + rect.w/2;
-          state.grid.y = rect.y + rect.h/2;
-          state.grid.s = 1;
-          state.grid.cell = Math.max(24, Math.floor(Math.min(rect.w, rect.h) / 9));
-          state.grid._initialized = true;
+          initGrid(rect); // set smaller, centered grid
         }
       }
-      if (!state.grid._initialized) initGrid(rect);
-      drawGrid();
+
+      if (state.mode === 'align') drawGrid();
+      else drawBoard();
     }
 
     // --------------- Image loading ----------
@@ -218,6 +271,9 @@
         state.imgNaturalW = img.naturalWidth;
         state.imgNaturalH = img.naturalHeight;
         state.grid._initialized = false;
+        state.mode = 'align';
+        keypad.style.display = 'none';
+        gridTip.style.display = '';
         setStatus(`${file.name} — ${img.naturalWidth}×${img.naturalHeight}`);
         redraw();
       };
@@ -225,33 +281,51 @@
       img.src = url;
     }
 
+    // --------------- Init grid --------------
+    function initGrid(rect) {
+      const g = state.grid;
+      const target = Math.min(rect.w, rect.h) * 0.6; // 60% of shorter side
+      const pxPerCell = target / 9;
+      g.cell = Math.max(24, Math.floor(pxPerCell));
+      g.s = 1;
+      g.x = rect.x + rect.w / 2;
+      g.y = rect.y + rect.h / 2;
+      g._initialized = true;
+    }
+
     // --------------- Input ------------------
     function getPos(e) {
       const t = (e.touches && e.touches[0]) || e;
-      const rect = canvas.getBoundingClientRect(); // canvas position on the page
-      return {
-        x: t.clientX - rect.left,
-        y: t.clientY - rect.top
-      };
+      const rect = canvas.getBoundingClientRect();
+      return { x: t.clientX - rect.left, y: t.clientY - rect.top };
     }
 
     function onDown(e) {
-      if (state.grid.locked) return;
       const { x, y } = getPos(e);
-      const handle = hitHandle(x, y);
-      if (handle === 'scale') {
-        const dx = x - state.grid.x, dy = y - state.grid.y;
-        state.drag = { mode: 'scale', s0: state.grid.s, dist0: Math.hypot(dx, dy) };
-      } else if (pointInGrid(x, y)) {
-        state.drag = { mode: 'move', gx: state.grid.x - x, gy: state.grid.y - y };
-      } else {
+
+      if (state.mode === 'align') {
+        const handle = hitHandle(x, y);
+        if (handle === 'scale') {
+          const dx = x - state.grid.x, dy = y - state.grid.y;
+          state.drag = { mode: 'scale', s0: state.grid.s, dist0: Math.hypot(dx, dy) };
+        } else if (pointInGrid(x, y)) {
+          state.drag = { mode: 'move', gx: state.grid.x - x, gy: state.grid.y - y };
+        }
+        if (state.drag) e.preventDefault();
         return;
       }
-      e.preventDefault();
+
+      // solve mode
+      const hit = boardHit(x, y);
+      if (hit) {
+        state.board.selected = hit;
+        redraw();
+        e.preventDefault();
+      }
     }
 
     function onMove(e) {
-      if (!state.drag) return;
+      if (state.mode !== 'align' || !state.drag) return;
       const { x, y } = getPos(e);
       if (state.drag.mode === 'move') {
         state.grid.x = x + state.drag.gx;
@@ -267,20 +341,6 @@
     }
     function onUp(){ state.drag = null; }
 
-    function initGrid(rect) {
-      const g = state.grid;
-      // Make grid about 60% of the image’s shorter side
-      const target = Math.min(rect.w, rect.h) * 0.6;
-      const pxPerCell = target / 9;
-
-      g.cell = Math.max(24, Math.floor(pxPerCell)); // readable
-      g.s = 1;                                      // keep scale at 1
-      g.x = rect.x + rect.w / 2;                    // center over image
-      g.y = rect.y + rect.h / 2;
-      g._initialized = true;
-    }
-
-
     canvas.addEventListener('mousedown', onDown);
     canvas.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -288,12 +348,37 @@
     canvas.addEventListener('touchmove', onMove, {passive:false});
     window.addEventListener('touchend', onUp);
 
-    // UI controls
-    lockBtn.addEventListener('click', () => {
-      state.grid.locked = !state.grid.locked;
-      lockBtn.textContent = state.grid.locked ? 'Unlock Grid' : 'Lock Grid';
-    });
+    // --------------- UI controls ------------
     opacityEl.addEventListener('input', (e) => { state.grid.opacity = +e.target.value; redraw(); });
+
+    confirmBtn.addEventListener('click', () => {
+      if (!state.img) return;
+      // freeze current grid geometry into board
+      const rect = gridRect();
+      state.board.x = Math.round(rect.x);
+      state.board.y = Math.round(rect.y);
+      state.board.cell = rect.cell;
+
+      state.mode = 'solve';
+      keypad.style.display = 'inline-flex';
+      gridTip.style.display = 'none';
+      redraw();
+    });
+
+    // keypad clicks
+    keypad.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-n]');
+      if (!btn) return;
+      commitDigit(+btn.getAttribute('data-n')); // 0 clears
+    });
+
+    // digit entry
+    function commitDigit(d) {
+      const sel = state.board.selected;
+      if (state.mode !== 'solve' || sel.r < 0) return;
+      state.board.values[sel.r][sel.c] = d; // 0 clears
+      redraw();
+    }
 
     // --------------- Drag & Drop ------------
     const showHint = (b) => dropHint.classList.toggle('show', !!b);
@@ -304,7 +389,22 @@
     fileInput.addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; handleFile(f); e.target.value=''; });
 
     // --------------- Keyboard ---------------
-    window.addEventListener('keydown', (e) => { if ((e.key === 'u' || e.key === 'U') && !e.metaKey && !e.ctrlKey && !e.altKey) fileInput.click(); });
+    window.addEventListener('keydown', (e) => {
+      // quick open
+      if ((e.key === 'u' || e.key === 'U') && !e.metaKey && !e.ctrlKey && !e.altKey) { fileInput.click(); return; }
+      if (state.mode !== 'solve') return;
+      if (/^[1-9]$/.test(e.key)) commitDigit(+e.key);
+      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') commitDigit(0);
+      // arrow keys to move selection
+      const sel = state.board.selected;
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+        if (sel.r < 0) { state.board.selected = { r:0, c:0 }; redraw(); return; }
+        const dr = e.key==='ArrowUp'?-1:e.key==='ArrowDown'?1:0;
+        const dc = e.key==='ArrowLeft'?-1:e.key==='ArrowRight'?1:0;
+        state.board.selected = { r: Math.max(0, Math.min(8, sel.r+dr)), c: Math.max(0, Math.min(8, sel.c+dc)) };
+        redraw();
+      }
+    });
 
     // --------------- Resize -----------------
     const ro = new ResizeObserver(() => redraw());
