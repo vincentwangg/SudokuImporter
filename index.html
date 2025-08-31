@@ -396,7 +396,6 @@
       const { x, y } = getPos(e);
 
       if (state.mode === 'align') {
-        // (unchanged align logic)
         const handle = hitHandle(x, y);
         if (handle === 'scale') {
           const dx = x - state.grid.x, dy = y - state.grid.y;
@@ -417,11 +416,17 @@
         redraw(); e.preventDefault(); return;
       }
 
-      if (!(e.ctrlKey || e.metaKey)) clearSelection();
-
       const k = keyOf(hit.r, hit.c);
-      const adding = !state.board.selection.has(k); // if already selected, dragging will erase
-      if (adding) addToSelection(hit.r, hit.c); else state.board.selection.delete(k);
+      if (state.board.selection.size === 1 && state.board.selection.has(k)) {
+        clearSelection();
+        state.board.anchor = { r:-1, c:-1 };
+        redraw(); e.preventDefault(); return; // EARLY RETURN so we don't reselect it below
+      }
+
+      // Normal click/drag selection
+      clearSelection();
+      const adding = true; // since we just cleared, we're adding this cell to start a drag
+      addToSelection(hit.r, hit.c);
       state.paintDrag = { adding, lastKey: k };
       redraw(); e.preventDefault();
     }

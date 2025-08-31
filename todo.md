@@ -1,0 +1,3 @@
+- add save function
+- unselect boxes
+- change shift select to be like cmd select
