@@ -86,7 +86,8 @@
       board: {
         x: 0, y: 0, cell: 0,
         values: Array.from({length:9}, () => Array(9).fill(0)),
-        selection: new Set(),      // keys "r,c"
+        hints:  Array.from({length:9}, () => Array.from({length:9}, () => new Set())),
+        selection: new Set(),
         anchor: { r:-1, c:-1 }
       },
       paintDrag: null, // { adding: true|false, lastKey: "r,c" }
@@ -129,6 +130,20 @@
     }
 
     function clearCanvas() { ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.restore(); }
+
+    function commitHint(d) {
+      if (state.mode !== 'solve' || !anySelected()) return;
+      for (const k of state.board.selection) {
+        const [r, c] = k.split(',').map(Number);
+        // don't add hints over filled cells
+        if (state.board.values[r][c] !== 0) continue;
+
+        const set = state.board.hints[r][c];
+        if (set.has(d)) set.delete(d);   // toggle behavior
+        else set.add(d);
+      }
+      redraw();
+    }
 
     // ---- grid sizing helpers (no rotation) ----
     const gridPx = () => state.grid.cell * state.grid.s;      // one cell px
@@ -268,6 +283,31 @@
             const cy = y + r*cell + cell/2;
             ctx.fillText(String(v), cx, cy + 1);
           }
+        }
+      }
+      ctx.restore();
+
+      // hints (half-size, centered)
+      ctx.save();
+      ctx.fillStyle = '#8aa2c0'; // muted vs main digits
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // half of normal font (normal is 0.75 * cell)
+      const hintFontPx = Math.floor(state.board.cell * 0.375);
+      ctx.font = `${hintFontPx}px system-ui, -apple-system, sans-serif`;
+
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          if (values[r][c] !== 0) continue; // only show hints on empty cells
+          const set = state.board.hints[r][c];
+          if (!set || set.size === 0) continue;
+
+          // join sorted hints; centered string like "137"
+          const text = Array.from(set).sort((a,b)=>a-b).join('');
+          const cx = x + c*cell + cell/2;
+          const cy = y + r*cell + cell/2;
+          ctx.fillText(text, cx, cy + 0.5);
         }
       }
       ctx.restore();
@@ -443,6 +483,7 @@
       for (const k of state.board.selection) {
         const [r,c] = k.split(',').map(Number);
         state.board.values[r][c] = d; // 0 clears
+        if (d !== 0) state.board.hints[r][c].clear(); // remove pencil marks
       }
       redraw();
     }
@@ -460,6 +501,13 @@
       // quick open
       if ((e.key === 'u' || e.key === 'U') && !e.metaKey && !e.ctrlKey && !e.altKey) { fileInput.click(); return; }
       if (state.mode !== 'solve') return;
+
+      // Ctrl/Cmd + number => toggle hint
+      if ((e.ctrlKey || e.metaKey) && /^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        commitHint(+e.key);
+        return;
+      }
 
       // digits
       if (/^[1-9]$/.test(e.key)) { commitDigit(+e.key); return; }
