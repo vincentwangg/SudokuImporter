@@ -796,11 +796,6 @@
       // Only meaningful in solve mode; in align mode there’s nothing to clear.
       if (state.mode !== 'solve') { setStatus('Switch to Solve to clear.'); return; }
 
-      if (!confirm('Clear ALL digits and ALL hints?')) {
-        setStatus('Clear canceled.');
-        return;
-      }
-
       pushHistory();
 
       for (let r = 0; r < 9; r++) {
