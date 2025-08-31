@@ -346,26 +346,32 @@
 
     // --------------- Image loading ----------
     async function handleFile(file) {
-      if (!file || !file.type.startsWith('image/')) return;
-      setStatus(`Loading: ${file.name}`);
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        state.img = img;
-        state.imgNaturalW = img.naturalWidth;
-        state.imgNaturalH = img.naturalHeight;
-        state.grid._initialized = false;
-        state.mode = 'align';
-        state.board.selection = new Set();
-        state.board.anchor = { r:-1, c:-1 };
-        keypad.style.display = 'none';
-        gridTip.style.display = '';
-        setStatus(`${file.name} — ${img.naturalWidth}×${img.naturalHeight}`);
-        redraw();
+      if (!file) return;
+      localStorage.removeItem('sudokuCache');
+      localStorage.removeItem('sudokuImage');
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result; // data URL
+        localStorage.setItem('sudokuImage', base64);
+
+        const img = new Image();
+        img.onload = () => {
+          state.img = img;
+          state.imgNaturalW = img.naturalWidth;
+          state.imgNaturalH = img.naturalHeight;
+          state.grid._initialized = false;
+          state.mode = 'align';
+          state.board.selection = new Set();
+          state.board.anchor = { r:-1, c:-1 };
+          keypad.style.display = 'none';
+          gridTip.style.display = '';
+          setStatus(`${file.name} — ${img.naturalWidth}×${img.naturalHeight}`);
+          redraw();
+        };
+        img.src = base64;
       };
-      img.onerror = () => { URL.revokeObjectURL(url); setStatus('Failed to load image. Try a different file.'); };
-      img.src = url;
+      reader.readAsDataURL(file);
     }
 
     // --------------- Init grid --------------
@@ -440,7 +446,7 @@
 
     function onMove(e) {
       if (!state.img) return;
-      
+
       if (state.mode === 'align') {
         if (!state.drag) return;
         const { x, y } = getPos(e);
@@ -481,6 +487,7 @@
     }
 
     function onUp() {
+      if (state.mode === 'align' && state.drag) saveGridToCache();
       state.drag = null;
       state.paintDrag = null;
     }
@@ -507,6 +514,9 @@
       state.board.anchor = { r:-1, c:-1 };
       keypad.style.display = 'inline-flex';
       gridTip.style.display = 'none';
+      
+      saveGridToCache();
+      saveToCache();
       redraw();
     });
 
@@ -587,7 +597,8 @@
     function pushHistory() {
       history.past.push(snapshotBoard());
       if (history.past.length > history.limit) history.past.shift();
-      history.future.length = 0; // new branch
+      history.future.length = 0;
+      saveToCache();
     }
     function undo() {
       if (!history.past.length) return;
@@ -601,6 +612,19 @@
       history.past.push(snapshotBoard());
       const next = history.future.pop();
       restoreBoard(next);
+    }
+    function saveToCache() {
+      const prev = JSON.parse(localStorage.getItem('sudokuCache') || '{}');
+      const snapshot = {
+        values: state.board.values, // plain numbers OK
+        hints: {
+          center: serializeHints(state.board.hints.center),
+          top:    serializeHints(state.board.hints.top),
+          bottom: serializeHints(state.board.hints.bottom),
+        }
+      };
+      const out = { ...prev, ...snapshot, mode: state.mode };
+      localStorage.setItem('sudokuCache', JSON.stringify(out));
     }
 
     // --------------- Drag & Drop ------------
@@ -697,6 +721,63 @@
       redraw();
     });
 
+    function getImageRect() {
+      if (!state.img) return null;
+      return fitImageRect(
+        state.imgNaturalW, state.imgNaturalH,
+        canvas.clientWidth, canvas.clientHeight
+      );
+    }
+
+    function saveGridToCache() {
+      if (!state.img) return;
+      const rect = getImageRect();
+      if (!rect) return;
+
+      // compute top-left of grid in canvas space
+      const size = state.grid.cell * 9 * state.grid.s;
+      const half = size / 2;
+      const tlx = state.grid.x - half;
+      const tly = state.grid.y - half;
+
+      // store as ratios so it survives different viewport sizes
+      const gridRel = {
+        tlx: (tlx - rect.x) / rect.w,  // 0..1 from image-left
+        tly: (tly - rect.y) / rect.h,  // 0..1 from image-top
+        sizeW: size / rect.w           // grid size relative to image width
+      };
+
+      const cached = JSON.parse(localStorage.getItem('sudokuCache') || '{}');
+      cached.gridRel = gridRel;
+      cached.mode = state.mode;
+      localStorage.setItem('sudokuCache', JSON.stringify(cached));
+    }
+
+    function restoreGridFromCacheIfAny(cache) {
+      if (!cache || !cache.gridRel || !state.img) return;
+      const rect = getImageRect();
+      if (!rect) return;
+
+      const size = cache.gridRel.sizeW * rect.w;
+      // keep your existing base cell; derive scale from desired size
+      state.grid.s = Math.max(0.2, Math.min(5, size / (state.grid.cell * 9)));
+
+      const half = (state.grid.cell * 9 * state.grid.s) / 2;
+      const tlx = rect.x + cache.gridRel.tlx * rect.w;
+      const tly = rect.y + cache.gridRel.tly * rect.h;
+
+      state.grid.x = tlx + half;
+      state.grid.y = tly + half;
+      state.grid._initialized = true; // we've placed it explicitly
+    }
+
+    function serializeHints(h) {
+      return h.map(row => row.map(s => Array.from(s))); // Set -> array
+    }
+    function deserializeHints(h) {
+      return h.map(row => row.map(arr => new Set(arr || []))); // array -> Set
+    }
+
     // --------------- Resize -----------------
     const ro = new ResizeObserver(() => redraw());
     ro.observe(document.body);
@@ -704,6 +785,46 @@
 
     // First paint
     redraw();
+
+    (function loadFromCache() {
+      const raw = localStorage.getItem('sudokuCache');
+      const imgData = localStorage.getItem('sudokuImage');
+      if (!raw && !imgData) return;
+
+      const cache = raw ? JSON.parse(raw) : null;
+
+      // Restore board first (even if image missing)
+      if (cache) {
+        if (cache.values) state.board.values = cloneValues(cache.values);
+        if (cache.hints) {
+          state.board.hints.center = deserializeHints(cache.hints.center);
+          state.board.hints.top    = deserializeHints(cache.hints.top);
+          state.board.hints.bottom = deserializeHints(cache.hints.bottom);
+        }
+        state.mode = cache.mode === 'align' ? 'align' : 'solve';
+        state.board.selection = new Set();
+        state.board.anchor = { r:-1, c:-1 };
+        if (state.mode === 'solve') { keypad.style.display = 'inline-flex'; gridTip.style.display = 'none'; }
+        else { keypad.style.display = 'none'; gridTip.style.display = ''; }
+      }
+
+      // Restore image, then restore grid (needs image rect)
+      if (imgData) {
+        const img = new Image();
+        img.onload = () => {
+          state.img = img;
+          state.imgNaturalW = img.naturalWidth;
+          state.imgNaturalH = img.naturalHeight;
+          if (cache) restoreGridFromCacheIfAny(cache); // ← now rect exists
+          redraw();
+          setStatus('Restored cached puzzle');
+        };
+        img.src = imgData;
+      } else {
+        redraw(); // board-only restore
+      }
+    })();
+
   </script>
 </body>
 </html>
