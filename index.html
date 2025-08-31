@@ -411,23 +411,27 @@
       const hit = boardHit(x, y);
       if (!hit) return;
 
-      if (e.ctrlKey || e.metaKey) {             // toggle single cell
-        toggleSelection(hit.r, hit.c);
+      const k = keyOf(hit.r, hit.c);
+      const modAdd = e.ctrlKey || e.metaKey || e.shiftKey; // treat any of these as "add mode"
+
+      if (modAdd) {
+        // Add the clicked cell and start an additive paint drag
+        addToSelection(hit.r, hit.c);
+        state.paintDrag = { adding: true, lastKey: k };
         redraw(); e.preventDefault(); return;
       }
 
-      const k = keyOf(hit.r, hit.c);
+      // No modifier: clicking the already-selected single cell clears selection (current behavior)
       if (state.board.selection.size === 1 && state.board.selection.has(k)) {
         clearSelection();
         state.board.anchor = { r:-1, c:-1 };
-        redraw(); e.preventDefault(); return; // EARLY RETURN so we don't reselect it below
+        redraw(); e.preventDefault(); return;
       }
 
-      // Normal click/drag selection
+      // Fresh selection & paint-add by default
       clearSelection();
-      const adding = true; // since we just cleared, we're adding this cell to start a drag
       addToSelection(hit.r, hit.c);
-      state.paintDrag = { adding, lastKey: k };
+      state.paintDrag = { adding: true, lastKey: k };
       redraw(); e.preventDefault();
     }
 
