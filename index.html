@@ -331,15 +331,14 @@
     function redraw() {
       resizeCanvasToDisplaySize();
       clearCanvas();
-      if (state.img) {
-        const rect = fitImageRect(state.imgNaturalW, state.imgNaturalH, canvas.clientWidth, canvas.clientHeight);
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(state.img, rect.x, rect.y, rect.w, rect.h);
 
-        if (!state.grid._initialized) {
-          initGrid(rect); // set smaller, centered grid
-        }
-      }
+      if (!state.img) return;
+
+      const rect = fitImageRect(state.imgNaturalW, state.imgNaturalH, canvas.clientWidth, canvas.clientHeight);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(state.img, rect.x, rect.y, rect.w, rect.h);
+
+      if (!state.grid._initialized) initGrid(rect);
 
       if (state.mode === 'align') drawGrid();
       else drawBoard();
@@ -389,6 +388,8 @@
     }
 
     function onDown(e) {
+      if (!state.img) return;
+
       const { x, y } = getPos(e);
 
       if (state.mode === 'align') {
@@ -438,6 +439,8 @@
     }
 
     function onMove(e) {
+      if (!state.img) return;
+      
       if (state.mode === 'align') {
         if (!state.drag) return;
         const { x, y } = getPos(e);
