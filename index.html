@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sudoku Overlay — Align → Solve</title>
+  <title>Sudoku Overlay — Align → Solve (Multi-select)</title>
   <style>
     :root { --bg:#0f1115; --panel:#171a21; --text:#e6e8ee; --muted:#9aa3b2; --accent:#4da3ff; }
     * { box-sizing: border-box; }
@@ -81,11 +81,15 @@
       mode: 'align', // 'align' | 'solve'
       grid: { x: 0, y: 0, s: 1, cell: 50, opacity: 0.8, _initialized: false },
       drag: null, // {mode:'move'|'scale', gx,gy, s0, dist0}
+      // selection drag (solve mode)
+      selDrag: null, // { anchor:{r,c}, last:{r,c} }
       board: {
         x: 0, y: 0, cell: 0,
         values: Array.from({length:9}, () => Array(9).fill(0)),
-        selected: { r:-1, c:-1 }
-      }
+        selection: new Set(),      // keys "r,c"
+        anchor: { r:-1, c:-1 }
+      },
+      paintDrag: null, // { adding: true|false, lastKey: "r,c" }
     };
 
     // --------------- Elements --------------
@@ -158,6 +162,30 @@
       return null;
     }
 
+    // selection helpers
+    const keyOf = (r,c) => `${r},${c}`;
+    function clearSelection() { state.board.selection.clear(); }
+    function addToSelection(r,c) { state.board.selection.add(keyOf(r,c)); }
+    function toggleSelection(r,c) {
+      const k = keyOf(r,c);
+      if (state.board.selection.has(k)) state.board.selection.delete(k);
+      else state.board.selection.add(k);
+    }
+    function selectRange(r1,c1,r2,c2) {
+      clearSelection();
+      const rr1 = Math.min(r1,r2), rr2 = Math.max(r1,r2);
+      const cc1 = Math.min(c1,c2), cc2 = Math.max(c1,c2);
+      for (let r=rr1; r<=rr2; r++) for (let c=cc1; c<=cc2; c++) addToSelection(r,c);
+    }
+    function anySelected() { return state.board.selection.size > 0; }
+    function firstSelected() {
+      for (const k of state.board.selection) {
+        const [r,c] = k.split(',').map(Number);
+        return {r,c};
+      }
+      return { r:-1, c:-1 };
+    }
+
     // --------------- Drawing ----------------
     function drawGrid() {
       const { x, y, s, cell, opacity } = state.grid;
@@ -202,20 +230,23 @@
     }
 
     function drawBoard() {
-      const { x, y, cell, values, selected } = state.board;
+      const { x, y, cell, values } = state.board;
 
-      // selected cell highlight
-      if (selected.r >= 0) {
+      // highlight all selected cells
+      if (anySelected()) {
         ctx.save();
         ctx.fillStyle = 'rgba(77,163,255,0.25)';
-        ctx.fillRect(x + selected.c*cell, y + selected.r*cell, cell, cell);
+        for (const k of state.board.selection) {
+          const [r,c] = k.split(',').map(Number);
+          ctx.fillRect(x + c*cell, y + r*cell, cell, cell);
+        }
         ctx.restore();
       }
 
       // subtle 3x3 boxes to keep orientation
       ctx.save();
       ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; // subtle, matches black digits vibe
       for (let br = 0; br < 3; br++) {
         for (let bc = 0; bc < 3; bc++) {
           ctx.strokeRect(x + bc*3*cell, y + br*3*cell, 3*cell, 3*cell);
@@ -223,7 +254,7 @@
       }
       ctx.restore();
 
-      // numbers
+      // numbers (black)
       ctx.save();
       ctx.fillStyle = '#000000';
       ctx.textAlign = 'center';
@@ -272,6 +303,8 @@
         state.imgNaturalH = img.naturalHeight;
         state.grid._initialized = false;
         state.mode = 'align';
+        state.board.selection = new Set();
+        state.board.anchor = { r:-1, c:-1 };
         keypad.style.display = 'none';
         gridTip.style.display = '';
         setStatus(`${file.name} — ${img.naturalWidth}×${img.naturalHeight}`);
@@ -304,6 +337,7 @@
       const { x, y } = getPos(e);
 
       if (state.mode === 'align') {
+        // (unchanged align logic)
         const handle = hitHandle(x, y);
         if (handle === 'scale') {
           const dx = x - state.grid.x, dy = y - state.grid.y;
@@ -315,31 +349,60 @@
         return;
       }
 
-      // solve mode
+      // --- solve mode: paint selection ---
       const hit = boardHit(x, y);
-      if (hit) {
-        state.board.selected = hit;
-        redraw();
-        e.preventDefault();
+      if (!hit) return;
+
+      if (e.ctrlKey || e.metaKey) {             // toggle single cell
+        toggleSelection(hit.r, hit.c);
+        redraw(); e.preventDefault(); return;
       }
+
+      if (!(e.ctrlKey || e.metaKey)) clearSelection();
+
+      const k = keyOf(hit.r, hit.c);
+      const adding = !state.board.selection.has(k); // if already selected, dragging will erase
+      if (adding) addToSelection(hit.r, hit.c); else state.board.selection.delete(k);
+      state.paintDrag = { adding, lastKey: k };
+      redraw(); e.preventDefault();
     }
 
     function onMove(e) {
-      if (state.mode !== 'align' || !state.drag) return;
-      const { x, y } = getPos(e);
-      if (state.drag.mode === 'move') {
-        state.grid.x = x + state.drag.gx;
-        state.grid.y = y + state.drag.gy;
-      } else if (state.drag.mode === 'scale') {
-        const dx = x - state.grid.x, dy = y - state.grid.y;
-        const dist = Math.hypot(dx, dy);
-        const k = Math.max(0.2, Math.min(5, dist / state.drag.dist0));
-        state.grid.s = state.drag.s0 * k;
+      if (state.mode === 'align') {
+        if (!state.drag) return;
+        const { x, y } = getPos(e);
+        if (state.drag.mode === 'move') {
+          state.grid.x = x + state.drag.gx;
+          state.grid.y = y + state.drag.gy;
+        } else if (state.drag.mode === 'scale') {
+          const dx = x - state.grid.x, dy = y - state.grid.y;
+          const dist = Math.hypot(dx, dy);
+          const k = Math.max(0.2, Math.min(5, dist / state.drag.dist0));
+          state.grid.s = state.drag.s0 * k;
+        }
+        redraw(); e.preventDefault(); return;
       }
-      redraw();
-      e.preventDefault();
+
+      if (!state.paintDrag) return;
+      const { x, y } = getPos(e);
+      const hit = boardHit(x, y);
+      if (!hit) return;
+
+      const k = keyOf(hit.r, hit.c);
+      if (k === state.paintDrag.lastKey) return;
+
+      if (state.paintDrag.adding) addToSelection(hit.r, hit.c);
+      else state.board.selection.delete(k);
+
+      state.paintDrag.lastKey = k;
+      redraw(); e.preventDefault();
     }
-    function onUp(){ state.drag = null; }
+
+    function onUp() {
+      state.drag = null;
+      state.paintDrag = null;
+    }
+
 
     canvas.addEventListener('mousedown', onDown);
     canvas.addEventListener('mousemove', onMove);
@@ -360,6 +423,8 @@
       state.board.cell = rect.cell;
 
       state.mode = 'solve';
+      state.board.selection = new Set();
+      state.board.anchor = { r:-1, c:-1 };
       keypad.style.display = 'inline-flex';
       gridTip.style.display = 'none';
       redraw();
@@ -372,11 +437,13 @@
       commitDigit(+btn.getAttribute('data-n')); // 0 clears
     });
 
-    // digit entry
+    // digit entry applies to all selected cells
     function commitDigit(d) {
-      const sel = state.board.selected;
-      if (state.mode !== 'solve' || sel.r < 0) return;
-      state.board.values[sel.r][sel.c] = d; // 0 clears
+      if (state.mode !== 'solve' || !anySelected()) return;
+      for (const k of state.board.selection) {
+        const [r,c] = k.split(',').map(Number);
+        state.board.values[r][c] = d; // 0 clears
+      }
       redraw();
     }
 
@@ -393,17 +460,33 @@
       // quick open
       if ((e.key === 'u' || e.key === 'U') && !e.metaKey && !e.ctrlKey && !e.altKey) { fileInput.click(); return; }
       if (state.mode !== 'solve') return;
-      if (/^[1-9]$/.test(e.key)) commitDigit(+e.key);
-      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') commitDigit(0);
-      // arrow keys to move selection
-      const sel = state.board.selected;
-      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
-        if (sel.r < 0) { state.board.selected = { r:0, c:0 }; redraw(); return; }
-        const dr = e.key==='ArrowUp'?-1:e.key==='ArrowDown'?1:0;
-        const dc = e.key==='ArrowLeft'?-1:e.key==='ArrowRight'?1:0;
-        state.board.selected = { r: Math.max(0, Math.min(8, sel.r+dr)), c: Math.max(0, Math.min(8, sel.c+dc)) };
-        redraw();
+
+      // digits
+      if (/^[1-9]$/.test(e.key)) { commitDigit(+e.key); return; }
+      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') { commitDigit(0); return; }
+
+      // arrows: move anchor or extend with Shift
+      const dir = { ArrowUp:[-1,0], ArrowDown:[1,0], ArrowLeft:[0,-1], ArrowRight:[0,1] }[e.key];
+      if (!dir) return;
+
+      // if nothing selected, start at (0,0)
+      if (!anySelected()) {
+        state.board.anchor = { r:0, c:0 };
+        clearSelection(); addToSelection(0,0);
+        redraw(); return;
       }
+
+      const a = state.board.anchor.r >= 0 ? state.board.anchor : firstSelected();
+      let nr = Math.max(0, Math.min(8, a.r + dir[0]));
+      let nc = Math.max(0, Math.min(8, a.c + dir[1]));
+
+      if (e.shiftKey) {
+        selectRange(a.r, a.c, nr, nc);
+      } else {
+        state.board.anchor = { r:nr, c:nc };
+        clearSelection(); addToSelection(nr, nc);
+      }
+      redraw();
     });
 
     // --------------- Resize -----------------
