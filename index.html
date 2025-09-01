@@ -326,7 +326,7 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const smallerHintFontPx = Math.floor(state.board.cell * 0.275);
-      ctx.font = `${smallerHintFontPx}px system-ui, -apple-system, sans-serif`;
+      ctx.font = `bold ${smallerHintFontPx}px system-ui, -apple-system, sans-serif`;
 
       for (let r = 0; r < 9; r++) {
         for (let c = 0; c < 9; c++) {
