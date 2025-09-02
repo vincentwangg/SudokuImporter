@@ -669,6 +669,12 @@
     });
 
     window.addEventListener('keydown', (e) => {
+      // Prevent page scrolling with arrow keys
+      const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+      if (arrowKeys.includes(e.key)) {
+        e.preventDefault();
+      }
+
       if (state.mode !== 'solve') return;
 
       // ---- HINT MODIFIERS ----
