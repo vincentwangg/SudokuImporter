@@ -448,9 +448,16 @@
       const modAdd = e.ctrlKey || e.metaKey || e.shiftKey; // treat any of these as "add mode"
 
       if (modAdd) {
-        // Add the clicked cell and start an additive paint drag
-        addToSelection(hit.r, hit.c);
-        state.paintDrag = { adding: true, lastKey: k };
+        const already = state.board.selection.has(k);
+        if (already) {
+          // start a removing paint drag
+          state.board.selection.delete(k);
+          state.paintDrag = { adding: false, lastKey: k };
+        } else {
+          // start an adding paint drag
+          addToSelection(hit.r, hit.c);
+          state.paintDrag = { adding: true, lastKey: k };
+        }
         redraw(); e.preventDefault(); return;
       }
 
