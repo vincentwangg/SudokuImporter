@@ -1,7 +1,12 @@
 # SudokuImporter
-If you come across a Sudoku in a PDF or without an interface for punching in numbers and hints, or if you come across a Sudoku with an interface you don't like, this may be helpful!
+If you come across a Sudoku in a PDF or without an interface for punching in numbers and hints, or if you come across a Sudoku with an interface you don't like, this may be helpful! This tool may be useful for ease of use, consistent hint interface for every puzzle you want to import and solve, and offering 3 rows of hints by default (sites typically only allow 1 row of hints).
 
 Simply screenshot your Sudoku, import it into the webpage, align the 9x9 Sudoku grid, and get to solving.
+
+Quick gallery overview
+![](docs/format.png)
+![step 4](docs/step4.png)
+![step 5](docs/step5.png)
 
 ## How to use
 If you enjoy solving puzzles from Sudoku World Puzzle Federation (WPF), but don't want to bother with printing out the puzzles and solving them manually, you can follow these steps to add an overlay for easier solving.
