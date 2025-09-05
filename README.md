@@ -4,6 +4,7 @@ If you come across a Sudoku in a PDF or without an interface for punching in num
 Simply screenshot your Sudoku, import it into the webpage, align the 9x9 Sudoku grid, and get to solving.
 
 Quick gallery overview
+
 ![](docs/format.png)
 ![step 4](docs/step4.png)
 ![step 5](docs/step5.png)
