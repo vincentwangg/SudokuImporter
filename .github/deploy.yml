@@ -1,0 +1,25 @@
+name: Deploy index.html to S3
+on:
+  push:
+    branches: ["main"]     # change if your branch is different
+
+permissions:
+  id-token: write          # OIDC
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::527691332724:role/SudokuImporterRole
+          aws-region: us-east-1           # or your region
+
+      - name: Upload ONLY index.html to S3
+        run: |
+          aws s3 cp index.html s3://sudoku-importer/index.html
