@@ -5,9 +5,9 @@ Simply screenshot your Sudoku, import it into the webpage, align the 9x9 Sudoku 
 
 Some examples of usage:
 
-![step 4](docs/step4.png)
-![step 5](docs/step5.png)
-![](docs/format.png)
+![step 4](docs/sample1.png)
+![step 5](docs/sample2.png)
+![](docs/sample3.png)
 
 ## How to use
 If you enjoy solving puzzles from Sudoku World Puzzle Federation (WPF), but don't want to bother with printing out the puzzles and solving them manually, you can follow these steps to add an overlay for easier solving.
