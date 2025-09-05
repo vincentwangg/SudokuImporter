@@ -39,6 +39,24 @@
     /* keypad */
     #keypad { display:none; gap:6px; }
     #keypad .btn { padding: 6px 10px; }
+
+    .footer {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      background: var(--panel);
+      border: 1px solid #2a2f3a;
+      border-radius: 10px;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      z-index: 1; /* below the toolbar (z=3), above the canvas */
+      box-shadow: 0 8px 24px rgba(0,0,0,.2);
+    }
+    .footer a { color: var(--accent); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -70,6 +88,12 @@
 
   <div class="drop-hint" id="dropHint" aria-hidden="true">
     <div class="drop-card">Drop your Sudoku screenshot here<br/><small>(or press <span class="kbd">U</span> to open file picker)</small></div>
+  </div>
+  <div class="footer">
+    This tool was created by Vincent Wang, @vincentwangg on GitHub.
+    Find the source code
+    <a href="https://github.com/vincentwangg/SudokuImporter?tab=readme-ov-file"
+       target="_blank" rel="noopener noreferrer">here</a>.
   </div>
 
   <script>
