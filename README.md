@@ -28,6 +28,7 @@ If you enjoy solving puzzles from Sudoku World Puzzle Federation (WPF), but don'
 
 ## Controls
 ![](docs/format.png)
+
 Click any cell to highlight it
 - [1] Digits 1-9 on the keyboard to fill in a solved number
 - [2] Shift + number to fill in a hint on the top row of the cell
