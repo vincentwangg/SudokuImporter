@@ -25,3 +25,18 @@ If you enjoy solving puzzles from Sudoku World Puzzle Federation (WPF), but don'
 5. Once finished, press "Save Result as Image" to save the final result!
 
 ![step 5](docs/step5.png)
+
+## Controls
+![](docs/format.png)
+- [1] Digits 1-9 on the keyboard
+- [2] Shift + number
+- [3] Windows: Ctrl + number, Mac: Ctrl/Cmd + number
+- [4] Q + number
+
+![](docs/multiple.png)
+You can also highlight multiple cells at once using ctrl, cmd (for mac), or shift to click and drag. Use the above controls to edit multiple cells at once
+
+## Miscellaneous Notes
+This was coded with the help of ChatGPT, so the code may look a little funky - I am a bit lazy to clean it up so if someone wants to do it, feel free to submit a pull request! This is also done in a singular HTML page for ease of portability and setup. If you would like to use this offline, simply download the HTML file (or copy it) and store it somewhere on your computer. If you need help doing so, ask ChatGPT!
+
+Hope you enjoy this tool, and happy Sudoku solving!
